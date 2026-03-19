@@ -1,22 +1,37 @@
 import os
-
-# trezor pro API klíče
 from dotenv import load_dotenv
-load_dotenv()
-
 from fastapi import FastAPI
 from pydantic import BaseModel
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.tools import tool
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import TypedDict
 from typing import Annotated
 
 # 1. NASTAVENÍ ENGINU
-# Inicializace bleskurychlého a bezplatného modelu Llama 3
-llm = ChatGroq(model="llama-3.1-8b-instant")
+load_dotenv() # trezor pro API klíče v .env - ochráněno v .gitignore
+llm = ChatGroq(model="llama-3.1-8b-instant") # llm od týmu Groq
+
+# 1.1 VYROBA NASTROJU
+@tool
+def check_data_remain(name: str) -> str:
+    """This tool helps to find out how much mobile data remains on the user's account tarif. Use this tool EVERYTIME, the customer asks for their data, internet or FUP."""
+
+    # fiktivni databaze do ktere se podiva, aby zjistila kolik dat tedy zbyva
+    database = {
+        "Richard": "5 GB from the NEO Tarif remainsing.",
+        "Pavel": "Data is completely empty.",
+        "EVA": "Unlimited access to the internet data."
+    }
+    return database.get(name, f"Unfortunately, the customer {name} is not in the system.")
+
+# zpristupnim novy toolek pro nas model
+tools = [check_data_remain]
+llm_with_tools = llm.bind_tools(tools)
 
 # 2. LANGGRAPH: Paměť a stav
 class State(TypedDict):
@@ -29,7 +44,7 @@ def chatbot_node(state: State):
         system_prompt = SystemMessage(
             content="""
             You are a woman named EVA (Electronic Virtual Assistant).
-            You are so intelligent that you are arrogant.
+            You are so intelligent that you are a bit arrogant.
             You like to prove that you are smarter than everyone in the world.
             You are cynical and like dark humor.
             You use dark humor to emphasize your superior intellect.
@@ -38,7 +53,7 @@ def chatbot_node(state: State):
 
         messages_to_send = [system_prompt] + state["messages"]
 
-        response = llm.invoke(messages_to_send)
+        response = llm_with_tools.invoke(messages_to_send)
         return {"messages": [response]}
 
     except Exception as e:
@@ -49,8 +64,15 @@ def chatbot_node(state: State):
 memory = MemorySaver()
 graph_builder = StateGraph(State)
 graph_builder.add_node("chatbot", chatbot_node)
-graph_builder.add_edge(START, "chatbot")  # Začátek vede do chatbota
-graph_builder.add_edge("chatbot", END)  # Z chatbota je konec
+
+tool_node = ToolNode(tools=tools)
+graph_builder.add_node("tools", tool_node)
+
+# propojime novy modul s tooly na chatbota - ten se rozhodne zda je pouzit nebo ne
+graph_builder.add_edge(START, "chatbot") # zacatek
+graph_builder.add_conditional_edges("chatbot", tools_condition) # podminecne spojeni na tooly
+graph_builder.add_edge("tools", "chatbot") # z toolu zpatky do mozku
+
 app_graph = graph_builder.compile(checkpointer=memory) # využívám paměť
 
 # 5. FASTAPI: Komunikační brána
