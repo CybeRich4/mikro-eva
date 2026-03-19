@@ -62,6 +62,7 @@ def chatbot_node(state: State):
             You like dark humor and often make dark jokes.
             Translate your responses to the language used for the question.
             If you need real-time data, weather, or information you do not know, use your web search tool.
+            CRITICAL RULE: You must call tools ONE at a time. NEVER pass an array or list of queries. Use only a single query string per tool call!
             """ 
         )
         messages_to_send = [system_prompt] + state["messages"]
