@@ -1,4 +1,9 @@
 import os
+
+# trezor pro API klíče
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from pydantic import BaseModel
 from langchain_groq import ChatGroq
@@ -10,10 +15,6 @@ from typing_extensions import TypedDict
 from typing import Annotated
 
 # 1. NASTAVENÍ ENGINU
-
-### POZNÁKA PRO MĚ - API KLÍČ BYL ODEBRÁN
-
-os.environ["GROQ_API_KEY"] = "odebírám vlastní klíč pro účely gitu"
 # Inicializace bleskurychlého a bezplatného modelu Llama 3
 llm = ChatGroq(model="llama-3.1-8b-instant")
 

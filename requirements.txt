@@ -4,3 +4,4 @@ pydantic
 langgraph
 langchain-groq
 langchain-core
+python-dotenv
