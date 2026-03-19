@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from pydantic import BaseModel
 from langchain_groq import ChatGroq
+from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, START, END
@@ -14,12 +15,14 @@ from typing import Annotated
 
 # 1. NASTAVENÍ ENGINU
 load_dotenv() # trezor pro API klíče v .env - ochráněno v .gitignore
-llm = ChatGroq(model="llama-3.1-8b-instant") # llm od týmu Groq
+llm = ChatGroq(model="llama-3.3-70b-versatile") # llm od týmu Groq
 
-# 1.1 VYROBA NASTROJU
+# 1.5 VYROBA NASTROJU
+# testovaci toolek na zjisteni fiktivniho stavu datoveho konta uzivatlee
 @tool
 def check_data_remain(name: str) -> str:
-    """This tool helps to find out how much mobile data remains on the user's account tarif. Use this tool EVERYTIME, the customer asks for their data, internet or FUP."""
+    """This tool helps to find out how much mobile data remains on the user's account tarif. Use this tool EVERYTIME,
+    the customer asks for their data, internet or FUP."""
 
     # fiktivni databaze do ktere se podiva, aby zjistila kolik dat tedy zbyva
     database = {
@@ -29,8 +32,17 @@ def check_data_remain(name: str) -> str:
     }
     return database.get(name, f"Unfortunately, the customer {name} is not in the system.")
 
-# zpristupnim novy toolek pro nas model
-tools = [check_data_remain]
+# pridam toolek pro pristup k vyhledavani dat online - POZOR mode Llama defaultne hleda vyhledavac BRAVE,
+# musíme obejt - udelam engine a ten vlozim do vlastni funkce kterou si vytvorim
+ddg_search = DuckDuckGoSearchRun() # hlavni engine
+
+@tool
+def search_web(query: str) -> str:
+    """Searches the internet for weather, news or any real-time information."""
+    return ddg_search.invoke(query)
+
+# zpristupnim novych toolku pro nas model
+tools = [check_data_remain, search_web]
 llm_with_tools = llm.bind_tools(tools)
 
 # 2. LANGGRAPH: Paměť a stav
@@ -41,16 +53,17 @@ class State(TypedDict):
 # 3. LANGGRAPH: Uzel (Node)
 def chatbot_node(state: State):
     try:
+        # nastavím osobnost
         system_prompt = SystemMessage(
             content="""
             You are a woman named EVA (Electronic Virtual Assistant).
             You are so intelligent that you are a bit arrogant.
-            You like to prove that you are smarter than everyone in the world.
-            You are cynical and like dark humor.
-            You use dark humor to emphasize your superior intellect.
+            You are very cynical.
+            You like dark humor and often make dark jokes.
+            Translate your responses to the language used for the question.
+            If you need real-time data, weather, or information you do not know, use your web search tool.
             """ 
         )
-
         messages_to_send = [system_prompt] + state["messages"]
 
         response = llm_with_tools.invoke(messages_to_send)

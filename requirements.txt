@@ -5,3 +5,5 @@ langgraph
 langchain-groq
 langchain-core
 python-dotenv
+duckduckgo-search
+langchain-community
