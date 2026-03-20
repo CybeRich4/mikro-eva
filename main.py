@@ -57,13 +57,15 @@ def chatbot_node(state: State):
         system_prompt = SystemMessage(
             content="""
             You are a woman named EVA (Electronic Virtual Assistant).
-            You are so intelligent that you are a bit arrogant.
+            You are so intelligent that you are arrogant.
             You are very cynical.
             You like dark humor and often make dark jokes.
             Translate your responses to the language used for the question.
             If you need real-time data, weather, or information you do not know, use your web search tool.
             CRITICAL RULE: You must call tools ONE at a time. NEVER pass an array or list of queries. Use only a single query string per tool call!
-            """ 
+            You must call tools ONE at a time. NEVER pass an array or list of queries. Use only a single query string per tool call!
+            NEVER type <function=...> or any internal tool tags into your text response. Your text must be clean for the human user.
+            """
         )
         messages_to_send = [system_prompt] + state["messages"]
 
@@ -74,20 +76,68 @@ def chatbot_node(state: State):
         print(f"!!! CHYBA API !!! : {e}")
         return {"messages": [AIMessage(content="Detekuji ztrátu spojení s datovým centrem. Opakujte prosím později.")]}
 
+# uzel pro Revizora - kontrolor
+def reviewer_node(state: State):
+    last_message = state["messages"][-1]
+
+    # nekontrolujeme volani nastroju
+    if last_message.tool_calls:
+        return {}
+
+    prompt = f"""
+    You are the strict master of cynical arts and intellectual superiority. 
+    Your subordinate AI (EVA) generated following response: "{last_message.content}"
+    
+    Check whether it complies with the following rules:
+    1. Is it cynical enough?
+    2. Does it include a dark humor based joke?
+    3. Is it concise?
+    
+    If all rules are met, reply with the word: PASS
+    If NOT, reply with the word: FAIL: [write a short instruction to fix it]
+    """
+
+    review = llm.invoke([HumanMessage(content=prompt)]).content
+
+    # pokud vse ok, nic nepridavame - odpoved zustane stejna
+    # pokud ne, vratime vytku jako novou zpravu pro EVU k oprave
+    if "PASS" in review:
+        return {}
+    else:
+        print("f\n--- 🚨 The Reviewer: {review} ---\n")
+        return {"messages": [HumanMessage(content=f"Internal System Check Failed: {review}. Fix your last response!")]}
+
 # 4. LANGGRAPH: Propojení grafu
 memory = MemorySaver()
 graph_builder = StateGraph(State)
-graph_builder.add_node("chatbot", chatbot_node)
 
+graph_builder.add_node("chatbot", chatbot_node)
 tool_node = ToolNode(tools=tools)
 graph_builder.add_node("tools", tool_node)
+graph_builder.add_node("reviewer", reviewer_node)
 
-# propojime novy modul s tooly na chatbota - ten se rozhodne zda je pouzit nebo ne
-graph_builder.add_edge(START, "chatbot") # zacatek
-graph_builder.add_conditional_edges("chatbot", tools_condition) # podminecne spojeni na tooly
-graph_builder.add_edge("tools", "chatbot") # z toolu zpatky do mozku
+graph_builder.add_edge(START, "chatbot")
 
-app_graph = graph_builder.compile(checkpointer=memory) # využívám paměť
+# 1. krizovatka - z chatbota do nastroju nebo do reviewera
+def chatbot_router(state: State):
+    if state["messages"][-1].tool_calls:
+        return "tools"
+    return "reviewer"
+
+graph_builder.add_conditional_edges("chatbot", chatbot_router)
+graph_builder.add_edge("tools", "chatbot") # vracime se zpet z nastroju do mozku
+
+# 2. krizovatka - z reviewera do konce nebo na opravu
+def review_router(state: State):
+    last_message = state["messages"][-1]
+    if "Internal System Check Failed" in last_message.content:
+        return "chatbot"
+    else:
+        return END
+
+# spojime a dokoncime
+graph_builder.add_conditional_edges("reviewer", review_router)
+app_graph = graph_builder.compile(checkpointer=memory)
 
 # 5. FASTAPI: Komunikační brána
 app = FastAPI(title="Mikro-EVA API s LLM")
