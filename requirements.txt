@@ -5,5 +5,5 @@ langgraph
 langchain-groq
 langchain-core
 python-dotenv
-duckduckgo-search
-langchain-community
+duckduckgo-search==8.1.1
+langchain-community==0.4.1
