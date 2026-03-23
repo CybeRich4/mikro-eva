@@ -13,6 +13,9 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from typing_extensions import TypedDict
 from typing import Annotated
 
+# FASTAPI: Komunikační brána
+app = FastAPI(title="Mikro-EVA API s LLM")
+
 # 1. NASTAVENÍ ENGINU
 load_dotenv() # trezor pro API klíče v .env - ochráněno v .gitignore
 llm = ChatGroq(model="llama-3.3-70b-versatile") # llm od týmu Groq
@@ -118,7 +121,7 @@ graph_builder.add_node("reviewer", reviewer_node)
 
 graph_builder.add_edge(START, "chatbot")
 
-# 1. krizovatka - z chatbota do nastroju nebo do reviewera
+# 4.1. krizovatka - z chatbota do nastroju nebo do reviewera
 def chatbot_router(state: State):
     if state["messages"][-1].tool_calls:
         return "tools"
@@ -127,7 +130,7 @@ def chatbot_router(state: State):
 graph_builder.add_conditional_edges("chatbot", chatbot_router)
 graph_builder.add_edge("tools", "chatbot") # vracime se zpet z nastroju do mozku
 
-# 2. krizovatka - z reviewera do konce nebo na opravu
+# 4.2. krizovatka - z reviewera do konce nebo na opravu
 def review_router(state: State):
     last_message = state["messages"][-1]
     if "Internal System Check Failed" in last_message.content:
@@ -135,12 +138,21 @@ def review_router(state: State):
     else:
         return END
 
-# spojime a dokoncime
+# 5. finalni kompilace grafu - spojime a dokoncime
 graph_builder.add_conditional_edges("reviewer", review_router)
 app_graph = graph_builder.compile(checkpointer=memory)
 
-# 5. FASTAPI: Komunikační brána
-app = FastAPI(title="Mikro-EVA API s LLM")
+# 6. vygeneruju nakres grafu
+try:
+    png_data = app_graph.get_graph().draw_mermaid_png()
+
+    with open("graph_mermaid.png", "wb") as f:
+        f.write(png_data)
+    print("Successfully generated graph.png")
+
+except Exception as e:
+    print(f"Chyba: {e}")
+
 
 class UserRequest(BaseModel):
     user_id: int
