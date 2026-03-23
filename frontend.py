@@ -7,7 +7,8 @@ st.title("📱 Terminal: Mikro-EVA")
 st.markdown("Connection initialized. EVA is ready ✅")
 
 # URL pro připojení na "Mozek" 🧠 (FastAPI)
-API_URL = "http://127.0.0.1:8000/chat"
+#API_URL = "http://127.0.0.1:8000/chat"
+API_URL = "https://mikro-eva-cyberich-cmcjf0ardbgqdshh.swedencentral-01.azurewebsites.net/chat"
 
 # lokální pamět, aby nemizelo okno při refreshi
 if "messages" not in st.session_state:
